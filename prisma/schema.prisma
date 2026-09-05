@@ -1,0 +1,561 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Hosted Postgres on Supabase (dedicated project: reno-rangers-crm, ref
+// xdfmrkvzbhdvjqkotupb, bouwtrack.be org — kept separate from the org's other
+// "Bouwtrack" project/schema). Both DATABASE_URL and DIRECT_URL point at the
+// Supavisor session pooler (aws-1-eu-west-1.pooler.supabase.com:5432) rather
+// than the direct db.<ref>.supabase.co host, because that host is IPv6-only
+// and unreachable from IPv4-only networks; session mode is the pooler mode
+// Supabase recommends for a persistent backend process like this Next.js app.
+// Enumerated fields are typed as String (not native Postgres enums) so the
+// canonical value lists in src/lib/constants.ts remain the single source of
+// truth shared with the UI — this also keeps the schema portable.
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =========================================================
+// Value sets (documented here, enforced in src/lib/constants.ts)
+// ---------------------------------------------------------
+// Role: OWNER_ADMIN | PROJECT_MANAGER | OFFICE_MANAGER | SALES | ACCOUNTANT | WORKER | SUBCONTRACTOR | CLIENT
+// Locale: UK | NL | EN
+// ProjectStatus: NEW | AWAITING_DEPOSIT | READY_FOR_PREP | IN_PREP | AWAITING_MATERIALS |
+//   READY_TO_SCHEDULE | SCHEDULED | IN_PROGRESS | ON_HOLD | AWAITING_INSPECTION |
+//   AWAITING_FIXES | AWAITING_FINAL_PAYMENT | COMPLETED | ARCHIVED
+// StageStatus: NOT_SCHEDULED | SCHEDULED | READY_TO_START | IN_PROGRESS | PAUSED |
+//   AWAITING_MATERIALS | AWAITING_CLIENT | DONE | INSPECTED | NEEDS_FIX
+// MaterialStatus: TO_BE_DEFINED | TO_ORDER | AWAITING_CONFIRMATION | ORDERED |
+//   PARTIALLY_DELIVERED | DELIVERED | DELAYED | OUT_OF_STOCK | RETURNED | CANCELLED
+// ContainerStatus: TO_ORDER | REQUEST_SENT | ORDERED | DELIVERY_CONFIRMED | DELIVERED |
+//   FULL | NEEDS_PICKUP | PICKUP_SCHEDULED | PICKED_UP | CANCELLED
+// TaskPriority: LOW | MEDIUM | HIGH | URGENT
+// TaskStatus: OPEN | IN_PROGRESS | DONE | OVERDUE | CANCELLED
+// TaskRelatedType: PROJECT | CLIENT | SUPPLIER | MATERIAL | CONTAINER | WORKER | SUBCONTRACTOR | PAYMENT | ISSUE
+// ExpenseCategory: MATERIAL | LABOR | SUBCONTRACTOR | CONTAINER | EQUIPMENT_RENTAL | TRANSPORT | OTHER
+// ExpenseStatus: PENDING | CONFIRMED | INVOICED | PAID | UNPAID
+// InvoiceType: DEPOSIT | INTERIM | EXTRA_WORK | FINAL
+// InvoiceStatus: DRAFT | SENT | PAID | OVERDUE | CANCELLED
+// ExtraWorkExecutionStatus: AWAITING_CLIENT_CONFIRMATION | APPROVED_MANUALLY | IN_PROGRESS | DONE | REJECTED
+// ExtraWorkPaymentStatus: NOT_INVOICED | INVOICED | PAID
+// ConfirmationMethod: EMAIL | WHATSAPP | SIGNATURE | VERBAL | MANUAL_OVERRIDE
+// IssuePriority: LOW | MEDIUM | HIGH | CRITICAL
+// IssueStatus: OPEN | IN_PROGRESS | RESOLVED | VERIFIED
+// DocumentCategory: OFFER | PLAN | DRAWING | TECHNICAL | MATERIAL_ORDER | INVOICE | PERMIT |
+//   PHOTO_BEFORE | PHOTO_PROGRESS | PHOTO_AFTER | EXTRA_WORK_ACT | HANDOVER_PROTOCOL | WARRANTY | OTHER
+// NotificationType: PROJECT_STARTS_TOMORROW | NO_TEAM_ASSIGNED | MATERIAL_NOT_ORDERED | MATERIAL_DELAYED |
+//   CONTAINER_NOT_ORDERED | PERMIT_MISSING | TASK_OVERDUE | HOURS_NOT_LOGGED | SITE_ISSUE |
+//   EXTRA_WORK_PENDING | BUDGET_OVER | INVOICE_UNPAID | DEADLINE_APPROACHING | PROJECT_DELAYED
+// =========================================================
+
+// =========================================================
+// USERS & DIRECTORY
+// =========================================================
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String
+  phone        String?
+  avatarUrl    String?
+  locale       String   @default("UK")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  workerProfile Worker?
+
+  managedProjects     Project[] @relation("ProjectManager")
+  consultedProjects   Project[] @relation("ProjectConsultant")
+  clientProfile       Client?   @relation("ClientUser")
+  assignedTasks       Task[]    @relation("TaskAssignee")
+  createdTasks        Task[]    @relation("TaskCreatedBy")
+  statusChanges       ProjectStatusHistory[]
+  responsibleStages   Stage[]   @relation("StageResponsible")
+  dailyReports        DailyReport[]
+  notifications       Notification[]
+  uploadedDocuments   Document[]
+  issuesResponsible   Issue[]   @relation("IssueResponsible")
+  scheduleResponsible ScheduleEntry[] @relation("ScheduleResponsible")
+  approvedExtraWorks  ExtraWork[] @relation("ExtraWorkApprovedBy")
+  comments            Comment[]
+}
+
+model Client {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  userId    String?   @unique
+  user      User?     @relation("ClientUser", fields: [userId], references: [id])
+  projects  Project[]
+  createdAt DateTime  @default(now())
+}
+
+model Supplier {
+  id         String      @id @default(cuid())
+  name       String
+  category   String?
+  contact    String?
+  phone      String?
+  email      String?
+  notes      String?
+  materials  Material[]
+  containers Container[]
+  createdAt  DateTime    @default(now())
+}
+
+model Worker {
+  id          String   @id @default(cuid())
+  userId      String?  @unique
+  user        User?    @relation(fields: [userId], references: [id])
+  name        String
+  type        String // EMPLOYEE | SUBCONTRACTOR
+  profession  String
+  phone       String?
+  email       String?
+  hourlyRate  Float?
+  projectRate Float?
+  rating      Float?   @default(0)
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  documents        Document[]
+  stageAssignments StageAssignment[]
+  scheduleEntries  ScheduleEntry[]
+  timeLogs         TimeLog[]
+  tasks            Task[] @relation("TaskWorkerRelated")
+}
+
+// =========================================================
+// PROJECTS
+// =========================================================
+
+model Project {
+  id               String    @id @default(cuid())
+  number           String    @unique
+  name             String
+  clientId         String
+  client           Client    @relation(fields: [clientId], references: [id])
+  address          String
+  googleMapsUrl    String?
+  pmId             String?
+  pm               User?     @relation("ProjectManager", fields: [pmId], references: [id])
+  consultantId     String?
+  consultant       User?     @relation("ProjectConsultant", fields: [consultantId], references: [id])
+  workType         String
+  offerDate        DateTime?
+  plannedStartDate DateTime?
+  plannedEndDate   DateTime?
+  actualEndDate    DateTime?
+  contractAmount   Float     @default(0)
+  vatRate          Float     @default(21)
+  warrantyMonths   Int       @default(12)
+  status           String    @default("NEW")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  statusHistory   ProjectStatusHistory[]
+  stages          Stage[]
+  materials       Material[]
+  containers      Container[]
+  tasks           Task[]
+  expenses        Expense[]
+  invoices        Invoice[]
+  extraWorks      ExtraWork[]
+  issues          Issue[]
+  documents       Document[]
+  dailyReports    DailyReport[]
+  scheduleEntries ScheduleEntry[]
+  timeLogs        TimeLog[]
+  handover        HandoverChecklist?
+}
+
+model ProjectStatusHistory {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status      String
+  changedById String?
+  changedBy   User?    @relation(fields: [changedById], references: [id])
+  note        String?
+  changedAt   DateTime @default(now())
+}
+
+// =========================================================
+// PLANNING / STAGES
+// =========================================================
+
+model Stage {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  startDate     DateTime?
+  endDate       DateTime?
+  durationDays  Int?
+  responsibleId String?
+  responsible   User?    @relation("StageResponsible", fields: [responsibleId], references: [id])
+  materialsNote String?
+  toolsNote     String?
+  dependsOnId   String?
+  dependsOn     Stage?   @relation("StageDependency", fields: [dependsOnId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  dependents    Stage[]  @relation("StageDependency")
+  status        String   @default("NOT_SCHEDULED")
+  delayReason   String?
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  assignments     StageAssignment[]
+  photos          Document[]
+  comments        Comment[]
+  scheduleEntries ScheduleEntry[]
+}
+
+model StageAssignment {
+  id       String @id @default(cuid())
+  stageId  String
+  stage    Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  workerId String
+  worker   Worker @relation(fields: [workerId], references: [id])
+}
+
+model ScheduleEntry {
+  id            String   @id @default(cuid())
+  workerId      String
+  worker        Worker   @relation(fields: [workerId], references: [id])
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stageId       String?
+  stage         Stage?   @relation(fields: [stageId], references: [id])
+  date          DateTime
+  startTime     String
+  endTime       String
+  task          String?
+  responsibleId String?
+  responsible   User?    @relation("ScheduleResponsible", fields: [responsibleId], references: [id])
+  confirmed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+}
+
+model TimeLog {
+  id            String   @id @default(cuid())
+  workerId      String
+  worker        Worker   @relation(fields: [workerId], references: [id])
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date          DateTime
+  startTime     String
+  endTime       String
+  breakMinutes  Int      @default(0)
+  workDone      String?
+  materialsUsed String?
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  photos Document[]
+}
+
+// =========================================================
+// MATERIALS & CONTAINERS
+// =========================================================
+
+model Material {
+  id                   String    @id @default(cuid())
+  projectId            String
+  project              Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                 String
+  category             String?
+  quantity             Float
+  unit                 String
+  supplierId           String?
+  supplier             Supplier? @relation(fields: [supplierId], references: [id])
+  purchasePrice        Float?
+  plannedOrderDate     DateTime?
+  actualOrderDate      DateTime?
+  orderNumber          String?
+  expectedDeliveryDate DateTime?
+  actualDeliveryDate   DateTime?
+  deliveryAddress      String?
+  responsibleId        String?
+  status               String    @default("TO_BE_DEFINED")
+  comment              String?
+  createdAt            DateTime  @default(now())
+
+  attachments Document[]
+  tasks       Task[] @relation("TaskMaterialRelated")
+}
+
+model Container {
+  id                  String    @id @default(cuid())
+  projectId           String
+  project             Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wasteType           String
+  size                String
+  supplierId          String?
+  supplier            Supplier? @relation(fields: [supplierId], references: [id])
+  price               Float?
+  orderDate           DateTime?
+  plannedDeliveryDate DateTime?
+  actualDeliveryDate  DateTime?
+  location            String?
+  permitNeeded        Boolean   @default(false)
+  permitExpiry        DateTime?
+  plannedPickupDate   DateTime?
+  actualPickupDate    DateTime?
+  invoiceNumber       String?
+  status              String    @default("TO_ORDER")
+  comment             String?
+  createdAt           DateTime  @default(now())
+
+  photos Document[]
+  tasks  Task[] @relation("TaskContainerRelated")
+}
+
+// =========================================================
+// TASKS / FOLLOW-UP
+// =========================================================
+
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  relatedType String?
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialId  String?
+  material    Material? @relation("TaskMaterialRelated", fields: [materialId], references: [id])
+  containerId String?
+  container   Container? @relation("TaskContainerRelated", fields: [containerId], references: [id])
+  workerId    String?
+  worker      Worker?   @relation("TaskWorkerRelated", fields: [workerId], references: [id])
+  issueId     String?
+  issue       Issue?    @relation(fields: [issueId], references: [id])
+  assigneeId  String?
+  assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdById String?
+  createdBy   User?     @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  dueDate     DateTime?
+  priority    String    @default("MEDIUM")
+  status      String    @default("OPEN")
+  checklist   String? // JSON string: [{label, done}]
+  createdAt   DateTime  @default(now())
+
+  attachments Document[]
+  comments    Comment[]
+}
+
+// =========================================================
+// FINANCE
+// =========================================================
+
+model Expense {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category    String
+  description String
+  amount      Float
+  status      String   @default("PENDING")
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  attachments Document[]
+}
+
+model Invoice {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  number    String    @unique
+  type      String    @default("INTERIM")
+  amount    Float
+  vatRate   Float     @default(21)
+  issueDate DateTime  @default(now())
+  dueDate   DateTime?
+  paidDate  DateTime?
+  status    String    @default("SENT")
+  createdAt DateTime  @default(now())
+
+  attachments Document[]
+}
+
+model ExtraWork {
+  id                 String    @id @default(cuid())
+  projectId          String
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description        String
+  reason             String?
+  laborCost          Float     @default(0)
+  materialCost       Float     @default(0)
+  vatRate            Float     @default(21)
+  sentDate           DateTime?
+  clientConfirmed    Boolean   @default(false)
+  confirmedAt        DateTime?
+  confirmationMethod String?
+  executionStatus    String    @default("AWAITING_CLIENT_CONFIRMATION")
+  paymentStatus      String    @default("NOT_INVOICED")
+  approvedManually   Boolean   @default(false)
+  approvedById       String?
+  approvedBy         User?     @relation("ExtraWorkApprovedBy", fields: [approvedById], references: [id])
+  createdAt          DateTime  @default(now())
+
+  photos Document[]
+}
+
+// =========================================================
+// ISSUES / QUALITY CONTROL
+// =========================================================
+
+model Issue {
+  id              String    @id @default(cuid())
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  description     String
+  category        String?
+  detectedDate    DateTime  @default(now())
+  responsibleId   String?
+  responsible     User?     @relation("IssueResponsible", fields: [responsibleId], references: [id])
+  priority        String    @default("MEDIUM")
+  plannedSolution String?
+  dueDate         DateTime?
+  status          String    @default("OPEN")
+  financialImpact Float?    @default(0)
+  affectsEndDate  Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  photosBefore Document[] @relation("IssuePhotosBefore")
+  photosAfter  Document[] @relation("IssuePhotosAfter")
+  tasks        Task[]
+}
+
+model QAChecklistTemplate {
+  id       String @id @default(cuid())
+  workType String
+  items    String // JSON array of strings
+}
+
+// =========================================================
+// DOCUMENTS (generic attachment table used across modules)
+// =========================================================
+
+model Document {
+  id           String   @id @default(cuid())
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category     String   @default("OTHER")
+  name         String
+  url          String
+  uploadedById String?
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id])
+  uploadedAt   DateTime @default(now())
+
+  stageId       String?
+  stage         Stage?       @relation(fields: [stageId], references: [id])
+  materialId    String?
+  material      Material?    @relation(fields: [materialId], references: [id])
+  containerId   String?
+  container     Container?   @relation(fields: [containerId], references: [id])
+  taskId        String?
+  task          Task?        @relation(fields: [taskId], references: [id])
+  expenseId     String?
+  expense       Expense?     @relation(fields: [expenseId], references: [id])
+  invoiceId     String?
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id])
+  extraWorkId   String?
+  extraWork     ExtraWork?   @relation(fields: [extraWorkId], references: [id])
+  timeLogId     String?
+  timeLog       TimeLog?     @relation(fields: [timeLogId], references: [id])
+  issueBeforeId String?
+  issueBefore   Issue?       @relation("IssuePhotosBefore", fields: [issueBeforeId], references: [id])
+  issueAfterId  String?
+  issueAfter    Issue?       @relation("IssuePhotosAfter", fields: [issueAfterId], references: [id])
+  dailyReportId String?
+  dailyReport   DailyReport? @relation(fields: [dailyReportId], references: [id])
+  workerId      String?
+  worker        Worker?      @relation(fields: [workerId], references: [id])
+}
+
+// =========================================================
+// DAILY SITE REPORT
+// =========================================================
+
+model DailyReport {
+  id                  String   @id @default(cuid())
+  projectId           String
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date                DateTime
+  authorId            String?
+  author              User?    @relation(fields: [authorId], references: [id])
+  workersPresent      String? // JSON array of names
+  hoursWorked         Float?
+  workDone            String?
+  materialsUsed       String?
+  materialsRunningLow String?
+  issuesFound         String?
+  planForTomorrow     String?
+  hasDelay            Boolean  @default(false)
+  needsManagerDecision Boolean @default(false)
+  createdAt           DateTime @default(now())
+
+  photos Document[]
+}
+
+// =========================================================
+// PROJECT HANDOVER
+// =========================================================
+
+model HandoverChecklist {
+  id                       String   @id @default(cuid())
+  projectId                String   @unique
+  project                  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  allWorkDone              Boolean  @default(false)
+  extraWorksConfirmed      Boolean  @default(false)
+  defectsFixed             Boolean  @default(false)
+  siteCleaned              Boolean  @default(false)
+  wasteAndContainerRemoved Boolean  @default(false)
+  materialsToolsRemoved    Boolean  @default(false)
+  finalPhotosTaken         Boolean  @default(false)
+  clientInspectionDone     Boolean  @default(false)
+  handoverProtocolSigned   Boolean  @default(false)
+  finalInvoiceIssued       Boolean  @default(false)
+  finalPaymentReceived     Boolean  @default(false)
+  warrantyDocsHanded       Boolean  @default(false)
+  updatedAt                DateTime @updatedAt
+}
+
+// =========================================================
+// NOTIFICATIONS & COMMENTS
+// =========================================================
+
+model Notification {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  type             String
+  message          String
+  relatedProjectId String?
+  read             Boolean  @default(false)
+  createdAt        DateTime @default(now())
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  text      String
+  createdAt DateTime @default(now())
+
+  stageId String?
+  stage   Stage?  @relation(fields: [stageId], references: [id])
+  taskId  String?
+  task    Task?   @relation(fields: [taskId], references: [id])
+}
