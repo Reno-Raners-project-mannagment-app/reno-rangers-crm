@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import path from "path";
-import { supabaseStorage, STORAGE_BUCKET } from "./supabaseStorage";
+import { getSupabaseStorage, STORAGE_BUCKET } from "./supabaseStorage";
 
 // Uploads to Supabase Storage (not local disk) so files survive across
 // devices/deploys and work on serverless hosts (e.g. Vercel) whose
@@ -8,6 +8,7 @@ import { supabaseStorage, STORAGE_BUCKET } from "./supabaseStorage";
 export async function saveUploadedFile(file: File): Promise<{ url: string; name: string } | null> {
   if (!file || file.size === 0) return null;
 
+  const supabaseStorage = getSupabaseStorage();
   const ext = path.extname(file.name) || "";
   const objectPath = `${randomUUID()}${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());

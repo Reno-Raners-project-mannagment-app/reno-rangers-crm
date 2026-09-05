@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "../db";
 import { requireUser } from "./helpers";
 import { saveUploadedFile } from "../upload";
-import { supabaseStorage, STORAGE_BUCKET } from "../supabaseStorage";
+import { getSupabaseStorage, STORAGE_BUCKET } from "../supabaseStorage";
 
 export async function uploadDocumentAction(projectId: string, fd: FormData) {
   const user = await requireUser();
@@ -35,7 +35,7 @@ export async function deleteDocumentAction(documentId: string, projectId: string
   const idx = doc.url.indexOf(marker);
   if (idx !== -1) {
     const objectPath = doc.url.slice(idx + marker.length);
-    await supabaseStorage.storage.from(STORAGE_BUCKET).remove([objectPath]);
+    await getSupabaseStorage().storage.from(STORAGE_BUCKET).remove([objectPath]);
   }
 
   revalidatePath(`/projects/${projectId}`);
