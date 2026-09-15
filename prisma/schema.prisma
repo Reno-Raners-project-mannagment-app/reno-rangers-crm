@@ -4,11 +4,16 @@ generator client {
 
 // Hosted Postgres on Supabase (dedicated project: reno-rangers-crm, ref
 // xdfmrkvzbhdvjqkotupb, bouwtrack.be org — kept separate from the org's other
-// "Bouwtrack" project/schema). Both DATABASE_URL and DIRECT_URL point at the
-// Supavisor session pooler (aws-1-eu-west-1.pooler.supabase.com:5432) rather
-// than the direct db.<ref>.supabase.co host, because that host is IPv6-only
-// and unreachable from IPv4-only networks; session mode is the pooler mode
-// Supabase recommends for a persistent backend process like this Next.js app.
+// "Bouwtrack" project/schema). Both URLs go through Supavisor
+// (aws-1-eu-west-1.pooler.supabase.com) rather than the direct
+// db.<ref>.supabase.co host, because that host is IPv6-only and unreachable
+// from IPv4-only networks. DATABASE_URL uses the *transaction* pooler
+// (port 6543, ?pgbouncer=true&connection_limit=1) because this app runs on
+// Vercel serverless functions, not a persistent process — each invocation
+// can open its own connection, and the session pooler's hard 15-connection
+// cap (EMAXCONNSESSION) gets exhausted under concurrent traffic. DIRECT_URL
+// stays on the session pooler (port 5432), which Prisma needs for
+// migrations (`prisma migrate`) since those don't go through pgbouncer.
 // Enumerated fields are typed as String (not native Postgres enums) so the
 // canonical value lists in src/lib/constants.ts remain the single source of
 // truth shared with the UI — this also keeps the schema portable.
