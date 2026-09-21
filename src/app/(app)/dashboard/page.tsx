@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   const role = user.role as Role;
 
   if (role === "WORKER" || role === "SUBCONTRACTOR") {
-    return <PersonalDashboard userId={user.id} locale={locale} t={t} />;
+    return <PersonalDashboard userId={user.id} t={t} />;
   }
   if (role === "CLIENT") {
     return <ClientDashboard userId={user.id} locale={locale} t={t} />;
@@ -197,7 +197,7 @@ function KpiTile({ label, value, color }: { label: string; value: number; color:
 // =====================================================================
 // PERSONAL DASHBOARD — Worker / Subcontractor
 // =====================================================================
-async function PersonalDashboard({ userId, locale, t }: { userId: string; locale: Locale; t: (k: string) => string }) {
+async function PersonalDashboard({ userId, t }: { userId: string; t: (k: string) => string }) {
   const worker = await prisma.worker.findUnique({ where: { userId } });
   const now = new Date();
   const weekStart = startOfWeek(now);

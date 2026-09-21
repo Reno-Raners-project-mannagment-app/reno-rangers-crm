@@ -13,7 +13,6 @@ export default function GlobalSearch({ placeholder }: { placeholder: string }) {
 
   useEffect(() => {
     if (query.trim().length < 2) {
-      setResults([]);
       return;
     }
     const handle = setTimeout(() => {
@@ -23,6 +22,8 @@ export default function GlobalSearch({ placeholder }: { placeholder: string }) {
     }, 200);
     return () => clearTimeout(handle);
   }, [query]);
+
+  const visibleResults = query.trim().length < 2 ? [] : results;
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -47,9 +48,9 @@ export default function GlobalSearch({ placeholder }: { placeholder: string }) {
           className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-orange-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100"
         />
       </div>
-      {open && results.length > 0 && (
+      {open && visibleResults.length > 0 && (
         <div className="absolute left-0 right-0 z-30 mt-1 max-h-96 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-800 dark:bg-gray-900">
-          {results.map((r) => (
+          {visibleResults.map((r) => (
             <Link
               key={`${r.type}-${r.id}`}
               href={r.href}

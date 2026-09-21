@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { MapPin, Phone, Mail, User } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { formatDate, formatEUR } from "@/lib/format";

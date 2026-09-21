@@ -64,7 +64,7 @@ async function main() {
   const w3 = await prisma.worker.create({ data: { name: "Oleh Bondar", type: "EMPLOYEE", profession: "Електрик", phone: "+31 6 2222 0003", hourlyRate: 32, rating: 4.8, active: true } });
   const w4 = await prisma.worker.create({ data: { name: "Andriy Shevchenko", type: "EMPLOYEE", profession: "Плиточник", phone: "+31 6 2222 0004", hourlyRate: 27, rating: 4.6, active: true } });
   const w5 = await prisma.worker.create({ data: { userId: subUser1.id, name: "Piotr Nowak (Nowak Loodgieters)", type: "SUBCONTRACTOR", profession: "Сантехнік", phone: "+31 6 3333 0001", email: subUser1.email, projectRate: 450, rating: 4.9, active: true } });
-  const w6 = await prisma.worker.create({ data: { name: "Dachdekker Meyer BV", type: "SUBCONTRACTOR", profession: "Покрівельник", phone: "+31 6 3333 0002", projectRate: 1200, rating: 4.4, active: true } });
+  await prisma.worker.create({ data: { name: "Dachdekker Meyer BV", type: "SUBCONTRACTOR", profession: "Покрівельник", phone: "+31 6 3333 0002", projectRate: 1200, rating: 4.4, active: true } });
   const w7 = await prisma.worker.create({ data: { name: "Marek Kowalczyk", type: "EMPLOYEE", profession: "Маляр", phone: "+31 6 2222 0005", hourlyRate: 24, rating: 4.3, active: true } });
 
   // ---------------------------------------------------------------

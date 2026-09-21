@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Reno Rangers CRM — a full-stack construction/renovation project management app built with Next.js (App Router), Prisma, and PostgreSQL (Supabase in production).
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies:
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+   ```bash
+   npm install
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Set up your environment variables:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+   ```bash
+   cp .env.example .env
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   At minimum, `DATABASE_URL` and `DIRECT_URL` must point at a reachable Postgres
+   database (see the comments in `.env.example` and in `prisma/schema.prisma`
+   for what each variable does). For local development you can point both at
+   the same local Postgres instance, e.g.:
 
-## Learn More
+   ```bash
+   createuser -s renorangers
+   createdb reno_rangers_crm -O renorangers
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+   ```
+   DATABASE_URL="postgresql://renorangers@localhost:5432/reno_rangers_crm?schema=public"
+   DIRECT_URL="postgresql://renorangers@localhost:5432/reno_rangers_crm?schema=public"
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   `SUPABASE_URL` / `SUPABASE_ANON_KEY` are only needed for the document/photo
+   upload features (`src/lib/supabaseStorage.ts`) and can be left unset for
+   local development of everything else.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Apply database migrations:
 
-## Deploy on Vercel
+   ```bash
+   npx prisma migrate deploy
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+4. (Optional) Seed demo data — users, projects, tasks, invoices, etc.:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   ```bash
+   npm run db:seed
+   ```
+
+   This creates one demo user per role, all with the password `demo1234`
+   (e.g. `admin@renorangers.nl` / `demo1234`). The login page lists all demo
+   accounts.
+
+5. Run the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000) — you'll be redirected
+   to `/login`.
+
+## Scripts
+
+- `npm run dev` — start the Next.js dev server (Turbopack).
+- `npm run build` — generate the Prisma client and create a production build.
+- `npm run start` — run the production build.
+- `npm run lint` — run ESLint.
+- `npm run db:seed` — seed demo data (see above).
+- `npm run db:reset` — drop and recreate the database, then reseed.
+
+## Stack
+
+- [Next.js](https://nextjs.org) (App Router, Server Actions)
+- [Prisma](https://www.prisma.io) ORM with PostgreSQL
+- [Supabase](https://supabase.com) for hosted Postgres and file storage
+- Session auth via signed JWT cookies (`src/lib/auth.ts`, `src/middleware.ts`)
+- Tailwind CSS
+
+## Deploying
+
+The app is designed to run on Vercel with a Supabase Postgres database. See
+the `db` datasource comment in `prisma/schema.prisma` for why `DATABASE_URL`
+and `DIRECT_URL` must point at different Supavisor pooler ports in that
+setup.

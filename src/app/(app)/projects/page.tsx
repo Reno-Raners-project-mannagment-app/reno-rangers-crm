@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/i18n/server";
 import { canManageProjects, canViewFinance, isRestrictedToOwnProjects } from "@/lib/permissions";
 import { formatDate, formatEUR } from "@/lib/format";
-import { PROJECT_STATUSES, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLOR, WORK_TYPES, type Role, type Locale, type ProjectStatus } from "@/lib/constants";
+import { PROJECT_STATUSES, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLOR, WORK_TYPES, type Role, type ProjectStatus } from "@/lib/constants";
 import { Badge } from "@/components/Badge";
 import type { Prisma } from "@prisma/client";
 

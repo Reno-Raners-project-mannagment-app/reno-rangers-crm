@@ -56,7 +56,7 @@ export default function DailyReportsTab({ projectId, reports, canEdit }: { proje
               </div>
             </div>
             <p className="text-xs text-gray-400">{r.author?.name} {r.hoursWorked ? `· ${r.hoursWorked} год` : ""}</p>
-            {r.workersPresent && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">На об'єкті: {r.workersPresent}</p>}
+            {r.workersPresent && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">На об&apos;єкті: {r.workersPresent}</p>}
             <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{r.workDone}</p>
             {r.materialsUsed && <p className="mt-1 text-xs text-gray-400">Матеріали: {r.materialsUsed}</p>}
             {r.materialsRunningLow && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Закінчується: {r.materialsRunningLow}</p>}
